@@ -1,0 +1,83 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bitacora_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bitacora_asados}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_pass_prod}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bitacora_asados"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bitacora_net
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: bitacora_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres_secure_pass_prod}@postgres:5432/${POSTGRES_DB:-bitacora_asados}?schema=public
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      STORAGE_PROVIDER: local
+      STORAGE_LOCAL_ROOT: /data/uploads
+    volumes:
+      - uploads_data:/data/uploads
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bitacora_net
+
+  worker:
+    build:
+      context: ../workers/processor
+      dockerfile: Dockerfile
+    container_name: bitacora_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres_secure_pass_prod}@postgres:5432/${POSTGRES_DB:-bitacora_asados}?schema=public
+      STORAGE_LOCAL_ROOT: /data/uploads
+      WORKER_POLL_INTERVAL_SECONDS: 2
+    volumes:
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bitacora_net
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: bitacora_tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - web
+    networks:
+      - bitacora_net
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  bitacora_net:
+    driver: bridge

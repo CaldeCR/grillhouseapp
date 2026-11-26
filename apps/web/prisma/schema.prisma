@@ -1,0 +1,502 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --------------------------------------------------------
+// AUTENTICACIÓN (Better Auth)
+// --------------------------------------------------------
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones Better Auth
+  sessions      Session[]
+  accounts      Account[]
+
+  // Relaciones de Dominio (Todas scoped por owner_id)
+  courses             Course[]
+  classSessions       ClassSession[]
+  materials           Material[]
+  annotations         Annotation[]
+  recipes             Recipe[]
+  techniques          Technique[]
+  references          Reference[]
+  media               Media[]
+  tags                Tag[]
+  jobs                Job[]
+  recipeReferences    RecipeReference[]
+  techniqueReferences TechniqueReference[]
+  recipeTags          RecipeTag[]
+  techniqueTags       TechniqueTag[]
+  recipeTechniques    RecipeTechnique[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String    @map("user_id")
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  idToken               String?   @map("id_token")
+  password              String?   // Hash Argon2id
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("verifications")
+}
+
+// --------------------------------------------------------
+// CURSOS Y MATERIALES
+// --------------------------------------------------------
+
+model Course {
+  id          String    @id @default(cuid())
+  ownerId     String    @map("owner_id")
+  name        String
+  school      String
+  instructor  String
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  classSessions ClassSession[]
+  materials     Material[]
+  recipes       Recipe[]
+  techniques    Technique[]
+
+  @@index([ownerId])
+  @@map("courses")
+}
+
+model ClassSession {
+  id            String    @id @default(cuid())
+  ownerId       String    @map("owner_id")
+  courseId      String    @map("course_id")
+  sessionNumber Int?      @map("session_number")
+  title         String
+  date          DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  materials Material[]
+
+  @@index([ownerId])
+  @@index([courseId])
+  @@map("class_sessions")
+}
+
+model Material {
+  id             String        @id @default(cuid())
+  ownerId        String        @map("owner_id")
+  courseId       String        @map("course_id")
+  classSessionId String?       @map("class_session_id")
+  title          String
+  sourceAuthor   String?       @map("source_author")
+  storageKey     String        @unique @map("storage_key")
+  fileName       String        @map("file_name")
+  fileSize       Int           @map("file_size")
+  mimeType       String        @map("mime_type")
+  pageCount      Int?          @map("page_count")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  classSession ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: SetNull)
+  annotations  Annotation[]
+  recipes      Recipe[]
+  techniques   Technique[]
+
+  @@index([ownerId])
+  @@index([courseId])
+  @@map("materials")
+}
+
+enum AnnotationType {
+  HIGHLIGHT
+  AREA
+  NOTE
+}
+
+model Annotation {
+  id         String         @id @default(cuid())
+  ownerId    String         @map("owner_id")
+  materialId String         @map("material_id")
+  pageNumber Int            @map("page_number")
+  type       AnnotationType @default(HIGHLIGHT)
+  position   Json           // Coordenadas { boundingRect, rects, pageNumber }
+  quoteText  String?        @map("quote_text")
+  comment    String?
+  color      String?        @default("#ffd700")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  owner    User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([materialId, pageNumber])
+  @@map("annotations")
+}
+
+// --------------------------------------------------------
+// FICHAS: RECETAS Y TÉCNICAS
+// --------------------------------------------------------
+
+model Recipe {
+  id               String   @id @default(cuid())
+  ownerId          String   @map("owner_id")
+  title            String
+  portions         Int?
+  ingredients      Json     // Array<{ amount: number; unit: string; name: string; notes?: string }>
+  stepsContent     Json     @map("steps_content") // TipTap JSON format
+  stepsText        String   @map("steps_text")    // Texto plano para búsquedas
+  cookingTimes     Json?    @map("cooking_times") // { prepMinutes, cookMinutes, restMinutes }
+  temperatures     Json?    // { targetCoreTemp, smokerTemp, grillZone }
+  
+  // Origen de referencia (RF-09)
+  originCourseId   String?  @map("origin_course_id")
+  originMaterialId String?  @map("origin_material_id")
+  originPage       Int?     @map("origin_page")
+  originAuthor     String?  @map("origin_author")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  owner            User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  originCourse     Course?           @relation(fields: [originCourseId], references: [id], onDelete: SetNull)
+  originMaterial   Material?         @relation(fields: [originMaterialId], references: [id], onDelete: SetNull)
+  media            Media[]
+  references       RecipeReference[]
+  tags             RecipeTag[]
+  techniques       RecipeTechnique[]
+
+  @@index([ownerId])
+  @@index([title])
+  @@map("recipes")
+}
+
+model Technique {
+  id               String   @id @default(cuid())
+  ownerId          String   @map("owner_id")
+  name             String
+  descriptionJson  Json?    @map("description_json") // TipTap JSON opcional
+  descriptionText  String?  @map("description_text") // Texto plano
+  keyPoints        String[] @map("key_points")
+  commonErrors     String[] @map("common_errors")
+
+  // Origen de referencia (RF-09)
+  originCourseId   String?  @map("origin_course_id")
+  originMaterialId String?  @map("origin_material_id")
+  originPage       Int?     @map("origin_page")
+  originAuthor     String?  @map("origin_author")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  owner            User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  originCourse     Course?              @relation(fields: [originCourseId], references: [id], onDelete: SetNull)
+  originMaterial   Material?            @relation(fields: [originMaterialId], references: [id], onDelete: SetNull)
+  media            Media[]
+  references       TechniqueReference[]
+  tags             TechniqueTag[]
+  recipes          RecipeTechnique[]
+
+  @@index([ownerId])
+  @@index([name])
+  @@map("techniques")
+}
+
+// --------------------------------------------------------
+// REFERENCIAS EXTERNAS (Redes Sociales / URLs)
+// --------------------------------------------------------
+
+enum SocialPlatform {
+  YOUTUBE
+  INSTAGRAM
+  TIKTOK
+  X
+  WEB
+}
+
+model Reference {
+  id                String         @id @default(cuid())
+  ownerId           String         @map("owner_id")
+  url               String
+  platform          SocialPlatform @default(WEB)
+  title             String?
+  notes             String?
+  thumbnailUrl      String?        @map("thumbnail_url")
+  thumbnailKey      String?        @map("thumbnail_key")
+  isManualThumbnail Boolean        @default(false) @map("is_manual_thumbnail")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  owner               User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipeReferences    RecipeReference[]
+  techniqueReferences TechniqueReference[]
+
+  @@index([ownerId])
+  @@index([url])
+  @@map("references")
+}
+
+// --------------------------------------------------------
+// ARCHIVOS MULTIMEDIA (Fotos y Videos Propios)
+// --------------------------------------------------------
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+enum TranscodingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum VideoPreset {
+  PRESET_480P
+  PRESET_720P
+  PRESET_1080P
+}
+
+model Media {
+  id                String            @id @default(cuid())
+  ownerId           String            @map("owner_id")
+  storageKey        String            @unique @map("storage_key")
+  originalName      String            @map("original_name")
+  mimeType          String            @map("mime_type")
+  fileSize          Int               @map("file_size")
+  mediaType         MediaType         @map("media_type")
+  durationSeconds   Float?            @map("duration_seconds")
+  width             Int?
+  height            Int?
+  transcodingStatus TranscodingStatus @default(PENDING) @map("transcoding_status")
+  videoPreset       VideoPreset?      @map("video_preset")
+  thumbnailKey      String?           @map("thumbnail_key")
+
+  recipeId          String?           @map("recipe_id")
+  techniqueId       String?           @map("technique_id")
+
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  owner             User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe            Recipe?           @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  technique         Technique?        @relation(fields: [techniqueId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([recipeId])
+  @@index([techniqueId])
+  @@map("media")
+}
+
+// --------------------------------------------------------
+// ETIQUETAS (Tags)
+// --------------------------------------------------------
+
+model Tag {
+  id        String   @id @default(cuid())
+  ownerId   String   @map("owner_id")
+  name      String
+  color     String?  @default("#e2e8f0")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner      User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipes    RecipeTag[]
+  techniques TechniqueTag[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@map("tags")
+}
+
+// --------------------------------------------------------
+// TABLAS INTERMEDIAS N:M EXPLÍCITAS (Con owner_id)
+// --------------------------------------------------------
+
+model RecipeReference {
+  recipeId    String   @map("recipe_id")
+  referenceId String   @map("reference_id")
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe    Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  reference Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, referenceId])
+  @@index([ownerId])
+  @@map("recipe_references")
+}
+
+model TechniqueReference {
+  techniqueId String   @map("technique_id")
+  referenceId String   @map("reference_id")
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  technique Technique @relation(fields: [techniqueId], references: [id], onDelete: Cascade)
+  reference Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@id([techniqueId, referenceId])
+  @@index([ownerId])
+  @@map("technique_references")
+}
+
+model RecipeTag {
+  recipeId  String   @map("recipe_id")
+  tagId     String   @map("tag_id")
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, tagId])
+  @@index([ownerId])
+  @@map("recipe_tags")
+}
+
+model TechniqueTag {
+  techniqueId String   @map("technique_id")
+  tagId       String   @map("tag_id")
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  technique Technique @relation(fields: [techniqueId], references: [id], onDelete: Cascade)
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([techniqueId, tagId])
+  @@index([ownerId])
+  @@map("technique_tags")
+}
+
+model RecipeTechnique {
+  recipeId    String   @map("recipe_id")
+  techniqueId String   @map("technique_id")
+  ownerId     String   @map("owner_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe    Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  technique Technique @relation(fields: [techniqueId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, techniqueId])
+  @@index([ownerId])
+  @@map("recipe_techniques")
+}
+
+// --------------------------------------------------------
+// COLA DE JOBS ASÍNCRONOS (SELECT FOR UPDATE SKIP LOCKED)
+// --------------------------------------------------------
+
+enum JobType {
+  VIDEO_TRANSCODE
+  PDF_EXTRACT
+  THUMBNAIL_GEN
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id           String    @id @default(cuid())
+  ownerId      String    @map("owner_id")
+  type         JobType
+  status       JobStatus @default(PENDING)
+  priority     Int       @default(0)
+  payload      Json      // { inputKey, preset, mediaId, targetResolution }
+  result       Json?     // { outputKey, thumbnailKey, durationSeconds, width, height }
+  errorMessage String?   @map("error_message")
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(3) @map("max_attempts")
+  scheduledAt  DateTime  @default(now()) @map("scheduled_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt, priority])
+  @@index([ownerId])
+  @@map("jobs")
+}

@@ -1,0 +1,14 @@
+{
+  "name": "bitacora-asados-root",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @bitacora/web dev",
+    "build": "pnpm --filter @bitacora/web build",
+    "start": "pnpm --filter @bitacora/web start",
+    "lint": "pnpm --filter @bitacora/web lint",
+    "test": "pnpm --filter @bitacora/web test",
+    "test:e2e": "pnpm --filter @bitacora/web test:e2e",
+    "db:migrate": "pnpm --filter @bitacora/web db:migrate",
+    "db:seed": "pnpm --filter @bitacora/web db:seed"
+  }
+}

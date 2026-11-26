@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 15 20% 8%;
+  --foreground: 30 15% 95%;
+  --primary: 18 90% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 15 12% 16%;
+  --secondary-foreground: 30 15% 90%;
+  --muted: 15 10% 22%;
+  --muted-foreground: 30 10% 65%;
+  --accent: 25 85% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 75% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 15 12% 20%;
+  --input: 15 12% 18%;
+  --ring: 18 90% 48%;
+  --radius: 0.65rem;
+}
+
+body {
+  background-color: #12100f;
+  color: #f5ede6;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Permitir selección en textos de lectura */
+article, p, span, h1, h2, h3, h4, input, textarea {
+  user-select: text;
+}
